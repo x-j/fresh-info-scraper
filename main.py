@@ -9,20 +9,24 @@ import numpy as np
 import requests
 from bs4 import BeautifulSoup
 
-from __old__ import stare_klatwy
+from __old__ import *
 
 # dicts
 NUMBERS_DICT = {1: "one", 2: "two", 3: "three", 4: "four"}
 
-# preferencje
+# !!!
+# TUTAJ DAJ SWOJE PREFERENCJE
+# !!!
 MIASTO = "warszawa"
-MAKS_KWOTA = 1900
-MIN_KWOTA = 1200
-POKOJE = [1, 2]
+MIN_KWOTA = 900
+MAKS_KWOTA = 2200
+POKOJE = [2]
 
-PRZEKLETE_DZIELNICE = stare_klatwy
-PRZEKLETE_SLOWA = ["uzyj formularza kontaktowego"] + PRZEKLETE_DZIELNICE
-PRZEKLETE_PATTERNY = []
+PRZEKLETE_DZIELNICE = ["bemow", "rembertów", "nowodwor", "białołęka", "bialoleka", "gocław", "bródn", "wawer", "wesoła",
+                       "wilanów", "ursus"]
+# PRZEKLETE_DZIELNICE = stare_klatwy
+PRZEKLETE_SLOWA = PRZEKLETE_DZIELNICE
+PRZEKLETE_PATTERNY = [r"bez zwierz[aą]t"] + stare_patterny
 
 # zaladuj dane teleadres
 try:
@@ -33,7 +37,8 @@ try:
         HOST_PASSWORD = data["password"]
     CONFIG_FILE_READ = True
 
-except:
+
+except FileNotFoundError as ex:
     CONFIG_FILE_READ = False
     # LOGOSWANIE DO MAILA:
     HOST_EMAIL = input("Podaj prosze swój email...")
@@ -43,7 +48,7 @@ except:
 
 # INNE GLOBALE
 LINKS_FILENAME = "links.csv"
-INTER_HACK_TIME = 60 * 60  # in seconds
+INTER_HACK_TIME = 60 * 90  # in seconds
 
 
 class CursedLinkException(Exception):
@@ -114,7 +119,7 @@ class LinkChecker:
                     raise CursedLinkException(
                         "znalazlem przekleta dzielnice: " + dzielnica + " odleglosc od niej to " + str(dystans))
 
-    def link_district_check(self):
+    def district_check(self):
         if "gumtree" in self.link:
             self.district_check_oldschool()
         self.district_check_newschool()
@@ -127,32 +132,32 @@ class LinkChecker:
             soup = BeautifulSoup(html, features="html.parser")
             html = str(soup.find("div", {"class": "description"}))
         elif "olx" in self.link:
-            pass  # TODO ale ne wiem co tam zrobic
+            soup = BeautifulSoup(html, features="html.parser")
+            html = str(soup.find("div", {"id": "textContent"}))
         elif "otodom" in self.link:
-            pass  # TODO tez nie wiem lol
+            pass  # TODO nie wiem jak wyciągnac wlasciwy content
 
         for slowo in PRZEKLETE_SLOWA:
-            if slowo in html.lower():
+            if slowo in html.lower() or slowo in self.link:
                 raise CursedLinkException("ZNALAZLEM PRZEKLETE SLOWO: " + slowo)
 
         for pat_i, pattern in enumerate(PRZEKLETE_PATTERNY):
-            if pat_i == 0:
-                break
             regex_match = re.search(pattern, html.lower())
             if regex_match:
-                raise CursedLinkException("znalazlem przeklety pattern: " + regex_match.group())
+                raise CursedLinkException("znalazlem przeklety pattern: " + str(pat_i) + ": " + regex_match.group())
 
     def check_link(self) -> bool:
-        print("weryfikuje link: " + self.link[self.link.find(".pl/"):self.link.find("ID3")])
+        print(".")
+        print("weryfikuje link: " + self.link)
 
         try:
-            self.link_district_check()
+            self.district_check()
             self.content_check()
         except CursedLinkException as ex:
             PRINT(ex)
             return False
         else:
-            print("znalazlem spoko link: " + self.link)
+            print("ten link jest spoko")
             return True
 
 
@@ -170,7 +175,7 @@ def scrape_olx():
     print("\nROZPOCZYNAM hakowanie OLXa")
     print(".")
 
-    url = f"https://www.olx.pl/nieruchomosci/mieszkania/wynajem/{MIASTO}/?search[filter_float_price%3Afrom]={MIN_KWOTA}&search[filter_float_price%3Ato]={MAKS_KWOTA}"
+    url = f"https://www.olx.pl/nieruchomosci/mieszkania/wynajem/{MIASTO}/?search[filter_float_price%3Afrom]={MIN_KWOTA}&search[filter_float_price%3Ato]={MAKS_KWOTA}&search[private_business]=private"
     for i, op in enumerate(POKOJE):
         if op <= 4:
             url += f"&search[filter_enum_rooms][{i}]={NUMBERS_DICT[op]}"
@@ -208,7 +213,7 @@ def scrape_gumtree():
 
     for op in POKOJE:
         urlist.append(
-            f"https://www.gumtree.pl/s-mieszkania-i-domy-do-wynajecia/{MIASTO}/v1c9008l3200008p1?nr={op}&pr={MIN_KWOTA},{MAKS_KWOTA}")
+            f"https://www.gumtree.pl/s-mieszkania-i-domy-do-wynajecia/{MIASTO}/v1c9008l3200008p1?nr={op}&pr={MAKS_KWOTA},{MIN_KWOTA}")
 
     for url in urlist:
         soup = BeautifulSoup(requests.get(url).text, features="html.parser")
@@ -243,11 +248,15 @@ def load_counter(filename):
     return int(last_row[0])
 
 
-def voynich_generator(offer_counter: int) -> str:
+def voynich_generator(seed: int) -> str:
+    """
+    always good to have one.
+    :return: a slovo
+    """
     prefixy = ["xi", "be", "su", "ta", "ro", "pu", "lo", "fero", "pi", "ju", "je", "ja"]
     intefixy = ["de", "ra", "ko", "su", "ke", "for", "kus", "rami", "n", "non", "suko"]
     sufixy = ["za", "fi", "no", "tix", "ter", "mer", "pir", "sena", "soto", "zur", "dos", "dex", "dek", "le", "ra"]
-    random.seed(offer_counter)
+    random.seed(seed)
     bub = random.random()
     if bub <= 0.3333333333333:
         slowo = random.choice(prefixy) + random.choice(intefixy) + random.choice(sufixy)
@@ -256,6 +265,11 @@ def voynich_generator(offer_counter: int) -> str:
     else:
         slowo = random.choice(prefixy) + random.choice(intefixy) + random.choice(intefixy)
     return slowo
+
+
+def log(err):
+    # file i/o
+    pass
 
 
 if __name__ == '__main__':
@@ -274,9 +288,10 @@ if __name__ == '__main__':
             found_links += (scrape_olx())
             found_links += (scrape_gumtree())
 
-        except requests.exceptions.ConnectionError:
-            print("COS JEST NIE TAK Z KOMINTERNEM moze burza uderzyla w twoj router")
+        except requests.exceptions.ConnectionError as err:
+            print("COS JEST NIE TAK Z KOMINTERNETEM moze burza uderzyla w twoj router")
             print("SPRÓBUJE ZNOWU ZA 10 MINUT MAM NADZIEJE ZE ZRESETUJESZ ROUTER")
+            log(err)
             sleep(600)
         except requests.exceptions.Timeout:
             print("timeout serwera, ide spać na minute i prubuje znowu")
@@ -303,24 +318,22 @@ if __name__ == '__main__':
                 PRINT("WERYFIKUJE LINKI")
                 nowalista = verify_gozo(nowalista)
 
-            # zbuduj content, wypisz linki, zapisz do pliku:
-            if len(nowalista) > 0:
-                print("\nOTO SĄ SPOKO LINKI:")
-            else:
-                print("\nnima nic nowego fajnego")
-            file = open(LINKS_FILENAME, "a")
+            temp = offer_counter
             content = ""
 
-            for link in found_links:
-                old_links.append(link)
-                offer_counter += 1
-                if link in nowalista:
+            # zbuduj content, wypisz linki:
+            if len(nowalista) > 0:
+                print("\nOTO SĄ SPOKO LINKI:")
+
+                for link in nowalista:
+                    offer_counter += 1
                     funnyname = voynich_generator(offer_counter)
                     print("#" + funnyname + " ::: " + link)
                     content += "#" + funnyname + ":: " + link + "\n\n"
-                file.write(str(offer_counter) + '|' + link + '\n')
-            file.close()
+            else:
+                print("\nnima nic nowego fajnego")
 
+            # wysylanie maila:
             if len(nowalista) > 0:
                 PRINT("PROBUJE WYSLAC MAILA......... ")
 
@@ -337,6 +350,14 @@ if __name__ == '__main__':
 
                 smtp_server.send_message(msg)
                 print("wyslalem maila ;)")
+
+                # zapisz wyslane linki do links.csv
+                file = open(LINKS_FILENAME, "a")
+                for link in nowalista:
+                    old_links.append(link)
+                    temp += 1
+                    file.write(str(temp) + '|' + link + '\n')
+                file.close()
 
             else:
                 print("nie wyslalem maila, siema")
